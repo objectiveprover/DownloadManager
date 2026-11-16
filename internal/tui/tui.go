@@ -154,9 +154,9 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
-	case "up", "k":
+	case "up", "ctrl+p":
 		m.cursor = max(0, m.cursor-1)
-	case "down", "j":
+	case "down", "ctrl+n":
 		m.cursor = min(len(m.list)-1, m.cursor+1)
 	case "a":
 		m.mode = modeAdd
@@ -296,7 +296,7 @@ func (m model) flashOrHelp() string {
 	if m.mode == modeAdd {
 		return mutedStyle.Render("enter next field / add · tab switch field · esc cancel")
 	}
-	return mutedStyle.Render("a add · p pause/resume · r retry · d remove · x delete file · ↑↓ select · q quit")
+	return mutedStyle.Render("a add · p pause/resume · r retry · d remove · x delete file · ↑↓/C-p C-n select · q quit")
 }
 
 func (m model) formView() string {

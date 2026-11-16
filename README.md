@@ -39,6 +39,6 @@ as it finishes downloading. Every download shows one of these results:
 ## TUI keys
 
 `a` add · `p`/space pause/resume · `r` retry / re-download · `d` remove from list ·
-`x` delete finished file · `↑↓`/`jk` select · `q` quit
+`x` delete finished file · `↑↓`/`Ctrl+P` `Ctrl+N` select · `q` quit
 
 Quitting saves progress, and unfinished downloads resume the next time you start dlm.
