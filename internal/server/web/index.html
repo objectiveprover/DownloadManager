@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dlm</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #6b7380; --line: #e2e5ea;
+    --accent: #3b6fe0; --accent-text: #ffffff; --track: #e8ebf0;
+    --ok: #1f8a4c; --ok-bg: #e6f4ec; --bad: #c8322f; --bad-bg: #fbe9e8;
+    --wait: #8a6100; --wait-bg: #fbf1d9; --none-bg: #eef0f3;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111418; --card: #1a1e24; --text: #e6e9ee; --muted: #8b93a1; --line: #2a3039;
+      --accent: #6d97f5; --accent-text: #0d1117; --track: #2a3039;
+      --ok: #4cc283; --ok-bg: #16301f; --bad: #f2716d; --bad-bg: #3a1a1a;
+      --wait: #e6b450; --wait-bg: #33290f; --none-bg: #252a32;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .conn { font-size: 13px; color: var(--muted); }
+  .conn.live::before { content: "● "; color: var(--ok); }
+  .conn.down::before { content: "● "; color: var(--bad); }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  form.card { margin-bottom: 20px; display: grid; gap: 6px; }
+  label { font-weight: 600; font-size: 13px; margin-top: 6px; }
+  label .opt { font-weight: 400; color: var(--muted); }
+  input { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 7px;
+          background: var(--bg); color: var(--text); font: inherit; }
+  input#checksum { font-family: var(--mono); font-size: 13.5px; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .hint { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+  .hint code { font-family: var(--mono); font-size: 12.5px; }
+  .detect { font-size: 13px; min-height: 1.45em; margin: 0; }
+  .detect.ok { color: var(--ok); } .detect.bad { color: var(--bad); } .detect.none { color: var(--muted); }
+  .form-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+  .error { color: var(--bad); margin: 0; font-size: 13.5px; }
+
+  button { font: inherit; font-size: 13.5px; padding: 6px 12px; border-radius: 7px; cursor: pointer;
+           border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; padding: 8px 16px; }
+  button.danger { color: var(--bad); }
+
+  #list { display: grid; gap: 10px; }
+  .dl { display: grid; gap: 8px; }
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .name { font-weight: 600; overflow-wrap: anywhere; }
+  .status { font-size: 12.5px; color: var(--muted); white-space: nowrap; text-transform: capitalize; }
+  .bar { height: 8px; background: var(--track); border-radius: 99px; overflow: hidden; }
+  .fill { height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .25s linear; }
+  .fill.verifying { background: var(--wait); }
+  .fill.done { background: var(--ok); }
+  .fill.failed { background: var(--bad); }
+  .fill.indeterminate { width: 30% !important; animation: slide 1.2s ease-in-out infinite alternate; }
+  @keyframes slide { from { margin-left: 0; } to { margin-left: 70%; } }
+  .meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .badge { justify-self: start; font-size: 13px; font-weight: 600; padding: 3px 9px; border-radius: 6px; }
+  .badge.verified { color: var(--ok); background: var(--ok-bg); }
+  .badge.mismatch { color: var(--bad); background: var(--bad-bg); }
+  .badge.pending, .badge.verifying { color: var(--wait); background: var(--wait-bg); }
+  .badge.none { color: var(--muted); background: var(--none-bg); font-weight: 500; }
+  .hashes { font-family: var(--mono); font-size: 12px; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+  .hashes span:nth-child(odd) { color: var(--muted); }
+  .hashes span:nth-child(even) { overflow-wrap: anywhere; }
+  .err { margin: 0; font-size: 13px; color: var(--bad); overflow-wrap: anywhere; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .empty { color: var(--muted); text-align: center; padding: 24px 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>dlm</h1>
+    <span id="conn" class="conn">connecting…</span>
+  </header>
+
+  <form id="add" class="card" autocomplete="off">
+    <label for="url">URL</label>
+    <input id="url" type="url" required placeholder="https://example.com/file.iso" spellcheck="false">
+
+    <label for="checksum">Checksum <span class="opt">(optional)</span></label>
+    <input id="checksum" placeholder="sha256:e3b0c44298fc1c149afbf4c8996fb924…" spellcheck="false">
+    <p class="hint">Paste the hash published next to the file: <code>sha256:&lt;hash&gt;</code>, or a bare md5, sha1, sha256 or sha512 hash. If you fill this in, the file is verified automatically when the download finishes.</p>
+    <p id="detect" class="detect none">No checksum: the download won't be verified.</p>
+
+    <div class="form-row">
+      <p id="form-error" class="error" role="alert"></p>
+      <button type="submit" class="primary">Add download</button>
+    </div>
+  </form>
+
+  <section id="list" aria-live="polite"></section>
+  <p id="empty" class="empty">No downloads yet.</p>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const listEl = $("list"), emptyEl = $("empty");
+const cards = new Map();
+
+// ---------- formatting ----------
+function fmtBytes(n) {
+  if (n < 0) return "?";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return (i === 0 ? n : n.toFixed(1)) + " " + units[i];
+}
+function fmtDur(s) {
+  if (!s || !isFinite(s)) return "";
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
+  if (h) return `${h}h${String(m).padStart(2, "0")}m`;
+  if (m) return `${m}m${String(sec).padStart(2, "0")}s`;
+  return `${sec}s`;
+}
+
+// ---------- checksum field: show what will happen ----------
+const ALGO_BY_LEN = { 32: "md5", 40: "sha1", 64: "sha256", 128: "sha512" };
+const ALGO_ALIAS = { "md5": "md5", "sha1": "sha1", "sha-1": "sha1", "sha256": "sha256", "sha-256": "sha256", "sha512": "sha512", "sha-512": "sha512" };
+function describeChecksum(raw) {
+  let s = raw.trim();
+  if (!s) return { cls: "none", text: "No checksum: the download won't be verified." };
+  let algo = "";
+  const i = s.search(/[:=]/);
+  if (i > 0 && !/\s/.test(s.slice(0, i))) {
+    algo = ALGO_ALIAS[s.slice(0, i).toLowerCase()];
+    if (!algo) return { cls: "bad", text: "Unknown algorithm. Use md5, sha1, sha256 or sha512." };
+    s = s.slice(i + 1).trim();
+  }
+  s = s.split(/\s+/)[0] || "";
+  if (!/^[0-9a-fA-F]+$/.test(s)) return { cls: "bad", text: "That doesn't look like a hex hash." };
+  if (!algo) algo = ALGO_BY_LEN[s.length];
+  if (!algo) return { cls: "bad", text: `Can't tell the algorithm from a ${s.length}-character hash. Prefix it, e.g. sha256:…` };
+  const want = Object.keys(ALGO_BY_LEN).find((k) => ALGO_BY_LEN[k] === algo);
+  if (s.length !== Number(want)) return { cls: "bad", text: `A ${algo} hash is ${want} characters; this one is ${s.length}.` };
+  return { cls: "ok", text: `✓ ${algo} checksum. It will be verified automatically when the download finishes.` };
+}
+$("checksum").addEventListener("input", (e) => {
+  const d = describeChecksum(e.target.value);
+  $("detect").className = "detect " + d.cls;
+  $("detect").textContent = d.text;
+});
+
+// ---------- API ----------
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) {
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { msg = (await res.json()).error || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+$("add").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("form-error").textContent = "";
+  try {
+    await api("POST", "/api/downloads", { url: $("url").value, checksum: $("checksum").value });
+    $("url").value = "";
+    $("checksum").value = "";
+    $("checksum").dispatchEvent(new Event("input"));
+    $("url").focus();
+  } catch (err) {
+    $("form-error").textContent = err.message;
+  }
+});
+
+function act(method, path) {
+  api(method, path).catch((err) => alert(err.message));
+}
+
+// ---------- rendering ----------
+function el(tag, cls, parent) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (parent) parent.appendChild(n);
+  return n;
+}
+
+function makeCard(id) {
+  const root = el("article", "card dl");
+  const top = el("div", "top", root);
+  const c = { root, data: null };
+  c.name = el("span", "name", top);
+  c.status = el("span", "status", top);
+  c.fill = el("div", "fill", el("div", "bar", root));
+  c.meta = el("div", "meta", root);
+  c.badge = el("div", "badge", root);
+  c.hashes = el("div", "hashes", root);
+  c.err = el("p", "err", root);
+  const actions = el("div", "actions", root);
+  c.primary = el("button", "", actions);
+  c.remove = el("button", "", actions);
+  c.del = el("button", "danger", actions);
+  c.remove.textContent = "Remove";
+  c.del.textContent = "Delete file";
+
+  c.primary.onclick = () => {
+    const d = c.data;
+    act("POST", `/api/downloads/${id}/${d.status === "paused" || d.status === "failed" ? "resume" : "pause"}`);
+  };
+  c.remove.onclick = () => act("DELETE", `/api/downloads/${id}`);
+  c.del.onclick = () => {
+    if (confirm(`Delete ${c.data.filename} from disk?`)) act("DELETE", `/api/downloads/${id}?deleteFile=true`);
+  };
+  return c;
+}
+
+const BADGE = {
+  none: () => "– No checksum",
+  pending: (cs) => `⧗ ${cs.algo} checksum: will verify when finished`,
+  verifying: (cs) => `… Verifying ${cs.algo}`,
+  verified: (cs) => `✓ Verified (${cs.algo})`,
+  mismatch: (cs) => `✗ Checksum mismatch (${cs.algo})`,
+};
+
+function update(c, d) {
+  c.data = d;
+  const cs = d.checksum;
+  c.name.textContent = d.filename;
+  c.name.title = d.url;
+  c.status.textContent = d.status;
+
+  // Progress bar: download progress, or hashing progress while verifying.
+  let pct, barCls = "fill";
+  if (d.status === "verifying") {
+    pct = d.size > 0 ? d.hashed / d.size : 0;
+    barCls += " verifying";
+  } else {
+    pct = d.size > 0 ? d.downloaded / d.size : (d.status === "done" ? 1 : 0);
+    if (d.status === "done") barCls += " done";
+    if (d.status === "failed") barCls += " failed";
+    if (d.size < 0 && d.status === "downloading") barCls += " indeterminate";
+  }
+  c.fill.className = barCls;
+  c.fill.style.width = (Math.min(1, pct) * 100).toFixed(1) + "%";
+
+  const parts = [];
+  if (d.status === "verifying") {
+    parts.push(`Verifying ${(pct * 100).toFixed(0)}%`);
+  } else {
+    parts.push(d.size >= 0 ? `${fmtBytes(d.downloaded)} / ${fmtBytes(d.size)}` : fmtBytes(d.downloaded));
+    if (d.size > 0) parts.push(`${(pct * 100).toFixed(0)}%`);
+    if (d.status === "downloading" && d.speed > 0) parts.push(`${fmtBytes(d.speed)}/s`);
+    if (d.status === "downloading" && d.eta > 0) parts.push(`ETA ${fmtDur(d.eta)}`);
+    if (d.segments > 1 && d.status === "downloading") parts.push(`${d.segments} connections`);
+  }
+  c.meta.textContent = parts.join(" · ");
+
+  c.badge.className = "badge " + cs.status;
+  c.badge.textContent = (BADGE[cs.status] || BADGE.none)(cs);
+
+  c.hashes.replaceChildren();
+  c.hashes.hidden = cs.status !== "mismatch";
+  if (cs.status === "mismatch") {
+    for (const [k, v] of [["expected", cs.expected], ["actual", cs.actual]]) {
+      el("span", "", c.hashes).textContent = k;
+      el("span", "", c.hashes).textContent = v;
+    }
+  }
+
+  c.err.hidden = !d.error || cs.status === "mismatch";
+  c.err.textContent = d.error || "";
+
+  const mismatch = cs.status === "mismatch";
+  c.primary.hidden = d.status === "done";
+  c.primary.textContent = {
+    queued: "Pause", downloading: "Pause", verifying: "Pause", paused: "Resume",
+    failed: mismatch ? "Re-download" : "Retry",
+  }[d.status] || "Pause";
+  c.del.hidden = !(d.status === "done" || mismatch);
+}
+
+function render(list) {
+  const seen = new Set();
+  list.forEach((d, i) => {
+    let c = cards.get(d.id);
+    if (!c) { c = makeCard(d.id); cards.set(d.id, c); }
+    if (listEl.children[i] !== c.root) listEl.insertBefore(c.root, listEl.children[i] || null);
+    update(c, d);
+    seen.add(d.id);
+  });
+  for (const [id, c] of cards) {
+    if (!seen.has(id)) { c.root.remove(); cards.delete(id); }
+  }
+  emptyEl.hidden = list.length > 0;
+}
+
+// ---------- live updates ----------
+const es = new EventSource("/api/events");
+es.onopen = () => { $("conn").className = "conn live"; $("conn").textContent = "live"; };
+es.onerror = () => { $("conn").className = "conn down"; $("conn").textContent = "disconnected, retrying…"; };
+es.onmessage = (e) => render(JSON.parse(e.data));
+</script>
+</body>
+</html>
